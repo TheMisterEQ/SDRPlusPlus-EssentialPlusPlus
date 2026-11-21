@@ -9,7 +9,7 @@ It is an independent extension, not an official SDR++ module.
 ### Receiver toolbar
 
 - Large LCD-style tuned and center-frequency displays, with configurable colour themes.
-- Frequency entry with Hz, kHz, MHz and GHz units.
+- Frequency entry with Hz, kHz, MHz and GHz units via numpad.
 - Back/forward tuning history and quick frequency recall.
 - Modulation and filter-bandwidth controls, tuning-step selection, volume/mute, and play/stop controls.
 - Source/device, sample-rate, gain/AGC and server IP/port controls where supported by the connected SDR device and SDR++ build.
