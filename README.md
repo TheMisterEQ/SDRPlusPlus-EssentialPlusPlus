@@ -1,110 +1,83 @@
-# Essential++ V40 for SDR++
+# Essential++ for SDR++
 
-A compact frequency-oriented interface extension for SDR++ 1.3.2 (Windows x64).
-It started as an LCD frequency display and mouse-wheel zoom extension and now
-includes VFO controls, bookmarks, presets 0-9, history, customization and a
-four-language interface.
+**Essential++ V40** is a community-developed Windows x64 plugin that adds an LCD-inspired receiver control bar and advanced mouse, keyboard, bookmark, and preset workflows to SDR++.
 
-> **Compatibility:** The supplied DLL is built for the specific SDR++ 1.3.2
-> Windows x64 **nightly from 18 November 2026** used for development. It uses
-> internal module and Dear ImGui interfaces, including a version-specific
-> Frequency Manager bridge. It is **not** a generic drop-in binary for other
-> SDR++ releases. Test the exact build before using it for regular reception.
+It is an independent extension, not an official SDR++ module.
 
-## What's new in V40
+## Features
 
-1. **Safe dropdown dismissal.** When a top-bar dropdown is open, the first
-   left click on the spectrum or waterfall dismisses it without retuning. A
-   subsequent click tunes as normal.
-2. **Compact windows.** Quick access is about 280 px wide; the bookmark add
-   and edit window is about 285 px wide (at UI scale 1). PPM context menu
-   remains independently sized.
-3. **Middle-click frequency copy.** Middle-click the waterfall or spectrum to
-   copy `<frequency>kHz <mode>`, for example `4625kHz USB`. On the **grey
-   selected VFO passband** it copies the *selected tuned frequency*, not the
-   point under the cursor. Elsewhere it copies the position under the cursor,
-   snapped to the selected VFO step. Sidebars and floating windows are excluded.
-   USB/LSB asymmetric filter boundaries are respected. Neither copying nor
-   closing a dropdown retunes the receiver.
-4. **Language selection.** Essential settings now has **Language** directly
-   below **Colour map**: English (default), Deutsch, Español, Polski. The choice
-   is saved to `essential_settings.ini` as `Language=0..3`, applied without
-   restarting, and existing V37/V38/V39 settings continue to load.
-5. **Polish UI without diacritics.** The Polish translation uses plain ASCII
-   (e.g. `Czestotliwosc`, `Polacz`, `Zakladki`) to display correctly in an
-   unmodified SDR++. German and Spanish localized characters are preserved.
+### Receiver toolbar
 
-Factory SDR++ menus and native Frequency Manager controls are **not translated**.
-Existing Essential++ functions from V39 are preserved, including the bookmark
-right-click logic on spectrum and waterfall and NFM/0 Hz defaults for empty
-quick access slots.
+- Large LCD-style tuned and center-frequency displays, with configurable colour themes.
+- Frequency entry with Hz, kHz, MHz and GHz units.
+- Back/forward tuning history and quick frequency recall.
+- Modulation and filter-bandwidth controls, tuning-step selection, volume/mute, and play/stop controls.
+- Source/device, sample-rate, gain/AGC and server IP/port controls where supported by the connected SDR device and SDR++ build.
+- Receiver monitoring with S-meter, RF/audio indicators, upload/download information, and two clocks with configurable UTC offsets.
 
-## Install (Windows x64)
+### Spectrum and waterfall
 
-1. **Close SDR++.** Back up your existing `modules/essential_plus_plus.dll`
-   and the `essential_settings.ini`, `essential_frequency_shortcuts.ini` and
-   `frequency_manager_config.json` files in your SDR++ configuration folder.
-2. Copy `essential_plus_plus.dll` from this archive to SDR++ `modules/`,
-   replacing the existing module.
-3. Start SDR++ and enable Essential++ as usual. Select the language in the
-   Essential settings panel, directly below Colour map.
-4. Verify the dropdown click, middle-click clipboard text, and both dialogs.
+- Mouse-wheel zoom around the pointed frequency, plus keyboard zoom controls.
+- Fine filter-bandwidth adjustment using the mouse wheel over the selected filter area (100 Hz per wheel step).
+- Tuning modes and a green preview marker, with optional marker information display.
+- Clickable bookmark labels and contextual right-click actions on the spectrum and waterfall.
+- Middle-click to copy frequency and modulation to the system clipboard (for example, `4625kHz USB`). When clicking inside the selected VFO's grey filter region, the tuned frequency is copied; elsewhere, the frequency under the cursor is copied.
+- When dismissing an open top-bar dropdown by clicking the spectrum or waterfall, the first click closes the list without changing frequency.
 
-The new language is stored in `essential_settings.ini`; presets continue to
-use the separate `essential_frequency_shortcuts.ini` file.
+### Bookmarks and quick access
 
-## Language / font compatibility
+- Add, edit, or remove Frequency Manager bookmarks using compact movable dialogs and a contextual right-click menu.
+- Select a bookmark category/list, name, frequency, mode, and filter bandwidth in the bookmark editor.
+- Contextual recognition of an existing bookmark on the spectrum and waterfall when the tuned frequency matches the bookmark.
+- Ten quick-access slots (`0`–`9`) for frequency, modulation, and filter bandwidth; clear a slot with confirmation.
+- Empty quick-access slots default to `NFM` mode and `0 Hz` bandwidth.
+- Separate storage for presets and Essential++ application settings.
 
-This release deliberately renders the **Polski** interface without Polish
-accented characters (e.g. `Czestotliwosc`, `Szerokosc`, `Polacz`, `Zakladki`).
-No SDR++ executable/core changes or font patches are required for these ASCII
-Polish translations. The **Deutsch** and **Español** translations retain their
-accented characters. English remains the default language.
+### Appearance and preferences
 
-Factory SDR++ controls (including native Frequency Manager labels) are not
-translated by Essential++. Language selection is persisted as before.
+- LCD colour maps: Green, Blue, Red, Orange, and Magenta.
+- Adjustable side-panel visibility (shown, hover-to-show, or hidden), plus zoom, waterfall speed, and contrast controls.
+- Two configurable clocks and saved interface preferences.
+- Four languages for **Essential++ itself**: English (default), Deutsch, Español, and Polski.
+- Language changes are applied without restarting and saved in `essential_settings.ini`.
+- The Polish translation intentionally uses **unaccented text** (for example, `Czestotliwosc`), allowing it to display with the stock SDR++ font atlas. German and Spanish accented characters are retained.
 
-## Source / build
+**Scope of translation:** only Essential++ interface strings are localized. Native SDR++ menus, Frequency Manager controls owned by SDR++, and third-party plugins are not translated.
 
-Source is in `Source/`. The project intentionally uses a narrowly targeted
-MSVC x64 ABI bridge and an LLVM freestanding build, not a general-purpose
-SDR++ plugin SDK. Python 3 and LLVM's `clang` and `lld-link` are required.
+## Compatibility
+
+The precompiled `essential_plus_plus.dll` targets the **SDR++ 1.3.2 Windows x64 nightly build from 18 November 2026** used during development. The plugin relies on internal SDR++ and Dear ImGui interfaces and a build-specific bridge to Frequency Manager. **Compatibility with other builds is not guaranteed.**
+
+## Installation
+
+1. Exit SDR++ completely.
+2. Back up your current `modules/essential_plus_plus.dll`, `essential_settings.ini`, `essential_frequency_shortcuts.ini`, and `frequency_manager_config.json`, if present.
+3. Copy `essential_plus_plus.dll` into SDR++'s `modules` directory.
+4. Start SDR++ and enable the Essential module if needed.
+5. Configure the interface in the **Essential** panel (including **Language** directly below **Colour map**).
+
+## Configuration
+
+- `essential_settings.ini` contains preferences such as language, panels, and display settings.
+- `essential_frequency_shortcuts.ini` contains the ten quick-access presets.
+- Frequency Manager manages its bookmarks in its own native configuration file.
+
+The plugin does not require a connected account or external network service to display its interface. Network receiver controls connect only when configured for your receiver/server.
+
+## Build from source
+
+The complete source is in [`Source/`](Source/). This is a narrowly targeted MSVC x64 ABI bridge using LLVM's freestanding build rather than a general-purpose plugin SDK. Requirements: Python 3, LLVM `clang` and `lld-link`.
 
 ```sh
 python Source/build.py --out build
 ```
 
-The generated binary is `build/essential_plus_plus.dll`. The build script
-creates import libraries from the declared target exports, so no Windows SDK
-or Visual Studio install is necessary. Its output is intended only for the
-supported SDR++ nightly. Do not redistribute the `build/` directory.
+The compiled plugin is generated at `build/essential_plus_plus.dll`. Build and verify it against the **exact target SDR++ nightly** and its `sdrpp_core.dll` exports. The prebuilt binary is not intended to run against arbitrary SDR++ releases.
 
-### Planned pre-release validation on Windows
+## Verification and limitations
 
-- Check screenshot/UI text in EN/DE/ES/PL (Polish should contain no diacritics).
-- Open all top-bar dropdowns and click away on **both** spectrum and waterfall:
-  first click closes, next tunes.
-- MMB inside grey filter copies the selected Hz; outside copies cursor Hz.
-- Check zoom, filter wheel, bookmark PPM detection at 225/226 kHz,
-  editing/deletion, quick presets, Priyom V2.2 co-existence.
-- Restart SDR++ and verify saved language, Speed, presets and layout.
+The project has undergone compile-time, source-level, and import-compatibility checks. The actual GUI behavior must be tested on Windows with the supported SDR++ build, especially popup dismissal, bookmark/category editing, keyboard shortcuts, mouse gestures, and language rendering. Do not confuse successful compilation with full end-to-end validation.
 
-**Not tested by running SDR++ on Windows in the build environment.** A clean
-compilation and source-level checks are not an end-to-end GUI test.
+## License
 
-## GitHub release preparation
-
-Suggested repository: `SDRPlusPlus-EssentialPlusPlus`. Add screenshots and a
-precise supported-nightly link once tested; publish this archive as the
-V40 Windows x64 pre-release asset. Do not publish private local INI files,
-server IPs, logs or radio recordings. If you use an automated CI build,
-retain the same LLVM command and verify binary imports against the exact
-supported SDR++ `sdrpp_core.dll`.
-
-### License and attribution
-
-Essential++ source is distributed under **GPL-3.0-only** in line with
-[SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) (GPL-3.0). See
-`Source/LICENSE`. Preserve the original upstream SDR++ copyright and license
-notices where applicable. Essential++ is an independent community extension,
-not an official SDR++ release.
+Essential++ source is released under **GPL-3.0-only**. See [`Source/LICENSE`](Source/LICENSE). SDR++ itself is an independent upstream project: <https://github.com/AlexandreRouma/SDRPlusPlus>.
