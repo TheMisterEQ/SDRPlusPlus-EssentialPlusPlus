@@ -7,6 +7,8 @@ struct ServerReading {
 };
 static ServerReading g_server={};
 static bool g_server_select_requested=false;
+// Set only when a native Source-menu Connect/Disconnect widget accepted our request.
+static bool g_server_native_click_seen=false;
 // The address editor is intentionally separate from the live native source.
 // Cancel/ESC must never modify either the active connection or its settings.
 struct EndpointDialog {
@@ -139,7 +141,10 @@ static bool server_observe_button(const char*l,bool changed){
     }server_sync_address();
     if(source_request_matches(5)&&!widget_disabled()){
         g_source_request.done=true;
-        if((g_source_request.direction>0&&connect)||(g_source_request.direction<0&&disconnect))return true;
+        if((g_source_request.direction>0&&connect)||(g_source_request.direction<0&&disconnect)){
+            g_server_native_click_seen=true;
+            return true; // Run the source's OWN connection handler after ImGui::Button.
+        }
     }
     if(changed){g_server.status=connect?SERVER_CONNECTING:SERVER_IDLE;}
     return changed;

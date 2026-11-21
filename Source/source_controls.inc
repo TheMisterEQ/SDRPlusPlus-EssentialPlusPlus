@@ -529,6 +529,42 @@ static void install_source_imports(){
         }
     }
 }
+// The SDR++ Server module imports ImGui::Button directly from sdrpp_core.dll.
+// Verify that exact imported symbol (not a guessed widget label or playback
+// function) and hook its IAT slot if the generic source scan missed it.
+// Never replace another plugin's unrelated hook.
+static bool ensure_native_server_button_bridge(){
+    u8*base=(u8*)GetModuleHandleA("sdrpp_server_source.dll");
+    if(!base||*(unsigned short*)base!=0x5A4D)return false;
+    const u32 pe=*(u32*)(base+0x3C);
+    if(pe>=4096||*(u32*)(base+pe)!=0x4550||*(unsigned short*)(base+pe+24)!=0x20B)return false;
+    const u32 size=*(u32*)(base+pe+24+56),dir=*(u32*)(base+pe+24+120);
+    if(size<0x1000||size>0x40000000||!dir||dir+20>size)return false;
+    for(u32 desc=dir;desc+20<=size;desc+=20){
+        const u32 lookup=*(u32*)(base+desc),dll=*(u32*)(base+desc+12),iat=*(u32*)(base+desc+16);
+        if(!dll)break;
+        if(!iat||iat+8>size||!lookup||lookup+8>size||dll+15>size)continue;
+        if(!c_equal((const char*)base+dll,"sdrpp_core.dll"))continue;
+        for(u32 delta=0;lookup+delta+8<=size&&iat+delta+8<=size;delta+=8){
+            void**slot=(void**)(base+iat+delta);
+            const u64 nameRva=*(u64*)(base+lookup+delta);
+            if(!*slot||!nameRva)break;
+            if((nameRva>>63)||nameRva+2>=size)continue;
+            const char*name=(const char*)base+(usize)nameRva+2;
+            const usize space=size-(usize)nameRva-2;
+            const char expected[]="?Button@ImGui@@YA_NPEBDAEBUImVec2@@@Z";
+            usize j=0;while(j<space&&j<sizeof(expected)&&name[j]&&name[j]==expected[j])j++;
+            if(j!=sizeof(expected)-1||j>=space||name[j])continue;
+            if(*slot==(void*)hook_server_button)return true;
+            if(*slot!=(void*)ui_Button||g_source_import_count>=512)return false;
+            SourceImport h={base,slot,*slot,(void*)hook_server_button};
+            if(!replace_import(slot,h.replacement))return false;
+            g_source_imports[g_source_import_count++]=h;
+            return true;
+        }
+    }
+    return false;
+}
 static void restore_source_imports(){
     restore_source_lifecycle(true);__atomic_store_n(&g_transport_enabled,false,__ATOMIC_RELEASE);
     for(int i=g_source_import_count-1;i>=0;i--){
@@ -632,60 +668,68 @@ static void server_probe(){
     g_gain_refresh=true;refresh_gain_reading();server_prepare_source();
     server_observe_transport();server_sync_address();server_sample_download();
 }
-static void server_native_action(int direction,const char*host,int port){
+// Execute ONLY the source module's own ImGui Connect/Disconnect button.
+// This never calls SourceManager::start/stop as a connection substitute.
+static bool server_native_action(int direction,const char*host,int port){
+    g_server_native_click_seen=false;
     g_source_request={};g_source_request.kind=5;g_source_request.direction=direction;
     c_copy(g_source_request.source,sizeof(g_source_request.source),string_chars(core_selected_source));
     if(host){g_source_request.setEndpoint=true;c_copy(g_source_request.host,sizeof(g_source_request.host),host);g_source_request.port=port;}
-    process_source_request();server_probe();
+    process_source_request(); // Runs source_showMenu and then clears the request.
+    const bool handled=g_server_native_click_seen;
+    server_probe();
+    return handled;
 }
-// Connect/Disconnect are transport-level commands. NEVER emulate them by
-// SourceManager::start()/stop(): those functions control IQ playback, and
-// using them here makes Connect start the stream and Disconnect merely Stop.
-// A receiver without native connection buttons has no separate connection
-// lifecycle exposed through this interface; fail safely instead of streaming.
 static bool request_server_connection(bool connect){
     if(!g_supported||!g_enabled||!server_selected()||*(bool*)core_main_window||!our_window_focused()||g_source_request.kind)return false;
-    server_prepare_source();char host[1024]={};int port=0;bool edit=connect&&g_server.dirty;
+    server_prepare_source();char host[1024]={};int port=0;
+    const bool edit=connect&&g_server.dirty;
     if(edit&&!parse_server_endpoint(g_server.address,host,sizeof(host),port)){
-        c_copy(g_server.error,sizeof(g_server.error),l10n("Nieprawidlowy adres IP lub host[:port]."));g_server.status=SERVER_ERROR;return false;
+        c_copy(g_server.error,sizeof(g_server.error),l10n("Nieprawidlowy adres IP lub host[:port]."));
+        g_server.status=SERVER_ERROR;return false;
     }
-    install_source_imports();server_probe();
-    // This first off-screen native menu visit only discovers the module's own
-    // Connect/Disconnect control. The original hook does not synthesize a click
-    // unless an explicit source request has already been queued.
+    install_source_imports();
+    // SDR++ Server has a native Connect AND Disconnect button. The old generic
+    // code accidentally missed that button and fell back to IQ Play/Stop.
+    // Hook the verified native widget explicitly before attempting the action.
+    if(c_equal(string_chars(core_selected_source),"SDR++ Server") &&
+       !ensure_native_server_button_bridge()){
+        c_copy(g_server.error,sizeof(g_server.error),
+               l10n("Nie mozna uzyskac dostepu do natywnego przycisku polaczenia."));
+        g_server.status=SERVER_ERROR;return false;
+    }
+    server_probe();
     if(!g_server.hasButton)visit_source_menu();
     if(!g_server.hasButton){
         c_copy(g_server.error,sizeof(g_server.error),
-               l10n("To zrodlo nie oferuje osobnego Connect/Disconnect. Uzyj Play/Stop."));
+               l10n("Nie mozna wykryc przycisku Connect/Disconnect w Source."));
         g_server.status=SERVER_ERROR;return false;
     }
-    if(!server_bridge_ready()){
-        c_copy(g_server.error,sizeof(g_server.error),l10n("Wybrany klient nie udostepnia polaczenia."));
-        g_server.status=SERVER_ERROR;return false;
-    }
-    // Stop existing playback only if needed for an actual disconnect/reconnect;
-    // never start it as a side effect of pressing Connect.
-    if(window_isPlaying(core_main_window))window_setPlayState(core_main_window,false);
-    g_server.status=SERVER_CONNECTING;
+    // We deliberately do not stop a stream for a normal Connect action.
+    // An actual Disconnect or endpoint reconnect needs playback stopped first.
+    if((!connect||(edit&&g_server.connected))&&window_isPlaying(core_main_window))
+        window_setPlayState(core_main_window,false);
     if(!connect||(edit&&g_server.connected)){
-        if(g_server.connected)server_native_action(-1,0,0);
-        server_probe();
-        if(g_server.connected){
+        if(g_server.connected&&!server_native_action(-1,0,0)){
             c_copy(g_server.error,sizeof(g_server.error),
-                   l10n("Nie mozna rozlaczyc klienta. Sprawdz natywny Source."));
+                   l10n("Nie mozna wywolac natywnego przycisku Disconnect."));
             g_server.status=SERVER_ERROR;return false;
         }
+        // Intentional disconnect is not an unexpected lost connection.
+        g_server.connected=false;
     }
     if(connect&&!g_server.connected){
-        server_native_action(1,edit?host:0,port);
-        server_probe();
-        if(!g_server.connected){
-            c_copy(g_server.error,sizeof(g_server.error),l10n("Nie polaczono. Sprawdz adres, port i serwer."));
+        if(!server_native_action(1,edit?host:0,port)){
+            c_copy(g_server.error,sizeof(g_server.error),
+                   l10n("Nie mozna wywolac natywnego przycisku Connect."));
             g_server.status=SERVER_ERROR;return false;
         }
+        // The native menu reflects the confirmed state on its NEXT draw.
+        // Do not mistake the pre-click Connect label for a failed connection.
         g_server.dirty=false;server_sync_address();
     }
-    g_server.error[0]=0;g_server.status=connect?SERVER_CONNECTED:SERVER_IDLE;
+    g_server.error[0]=0;
+    g_server.status=connect?SERVER_CONNECTING:SERVER_IDLE;
     g_server.transferReady=false;g_server.lastBytes=transport_bytes(transport_selected_slot());
     g_server.lastUpload=transport_uploaded(transport_selected_slot());
     g_server.lastSample=ui_GetTime();return true;
