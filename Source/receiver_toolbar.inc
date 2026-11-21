@@ -415,7 +415,6 @@ static void toolbar_server(){
                 // reconnect to the new endpoint and restore the previous Play state.
                 if(g_server.dirty){
                     if(g_server.connected){
-                        g_server.resumeAfterConnect=window_isPlaying(core_main_window);
                         queue_server_connection(true);
                     }else{
                         server_native_action(0,g_endpoint_dialog.host,g_endpoint_dialog.port);

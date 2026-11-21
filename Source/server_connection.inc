@@ -2,7 +2,7 @@
 enum ServerStatus { SERVER_IDLE,SERVER_CONNECTING,SERVER_CONNECTED,SERVER_ERROR };
 struct ServerReading {
     char source[256],host[1024],address[1040],error[192],hostKey[256],portKey[256];
-    int port,status,slot;bool observed,connected,dirty,editing,hostEditable,hasButton,pending,pendingConnect,resumeAfterConnect;
+    int port,status,slot;bool observed,connected,dirty,editing,hostEditable,hasButton,pending,pendingConnect;
     int pendingFrame;u64 lastBytes,lastUpload;double lastSample,download,upload,nativeDownload,nativeSample;bool transferReady,nativeReady;
 };
 static ServerReading g_server={};

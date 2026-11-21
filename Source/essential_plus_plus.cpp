@@ -2245,7 +2245,7 @@ extern "C" { int _fltused=0; }
 MOD_EXPORT const ModuleManager::ModuleInfo_t _INFO_={"Essential++","LCD frequency toolbar, bookmarks, localisation and shortcuts","TheMisterEQ / OpenAI",40,0,0,0};
 MOD_EXPORT void _INIT_(){
     g_supported=check_core_abi();
-    if(!g_supported){MessageBoxA(0,"Essential V39 requires SDR++ Windows x64 1.3.2 nightly (Nov 18, 2026).","Essential",0x30);return;}
+    if(!g_supported){MessageBoxA(0,"Essential++ V40 requires SDR++ Windows x64 1.3.2 nightly (Nov 18, 2026).","Essential",0x30);return;}
     load_presets();
     if(g_tuning_mode>=0){
         *(int*)(core_main_window+0xFC)=g_tuning_mode==1?0:1;

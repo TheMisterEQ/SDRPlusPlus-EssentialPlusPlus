@@ -638,6 +638,11 @@ static void server_native_action(int direction,const char*host,int port){
     if(host){g_source_request.setEndpoint=true;c_copy(g_source_request.host,sizeof(g_source_request.host),host);g_source_request.port=port;}
     process_source_request();server_probe();
 }
+// Connect/Disconnect are transport-level commands. NEVER emulate them by
+// SourceManager::start()/stop(): those functions control IQ playback, and
+// using them here makes Connect start the stream and Disconnect merely Stop.
+// A receiver without native connection buttons has no separate connection
+// lifecycle exposed through this interface; fail safely instead of streaming.
 static bool request_server_connection(bool connect){
     if(!g_supported||!g_enabled||!server_selected()||*(bool*)core_main_window||!our_window_focused()||g_source_request.kind)return false;
     server_prepare_source();char host[1024]={};int port=0;bool edit=connect&&g_server.dirty;
@@ -645,28 +650,45 @@ static bool request_server_connection(bool connect){
         c_copy(g_server.error,sizeof(g_server.error),l10n("Nieprawidlowy adres IP lub host[:port]."));g_server.status=SERVER_ERROR;return false;
     }
     install_source_imports();server_probe();
-    if(!server_bridge_ready()){c_copy(g_server.error,sizeof(g_server.error),l10n("Wybrany klient nie udostepnia polaczenia."));g_server.status=SERVER_ERROR;return false;}
-    bool buttons=g_server.hasButton;g_server.status=SERVER_CONNECTING;
+    // This first off-screen native menu visit only discovers the module's own
+    // Connect/Disconnect control. The original hook does not synthesize a click
+    // unless an explicit source request has already been queued.
+    if(!g_server.hasButton)visit_source_menu();
+    if(!g_server.hasButton){
+        c_copy(g_server.error,sizeof(g_server.error),
+               l10n("To zrodlo nie oferuje osobnego Connect/Disconnect. Uzyj Play/Stop."));
+        g_server.status=SERVER_ERROR;return false;
+    }
+    if(!server_bridge_ready()){
+        c_copy(g_server.error,sizeof(g_server.error),l10n("Wybrany klient nie udostepnia polaczenia."));
+        g_server.status=SERVER_ERROR;return false;
+    }
+    // Stop existing playback only if needed for an actual disconnect/reconnect;
+    // never start it as a side effect of pressing Connect.
     if(window_isPlaying(core_main_window))window_setPlayState(core_main_window,false);
+    g_server.status=SERVER_CONNECTING;
     if(!connect||(edit&&g_server.connected)){
-        if(buttons)server_native_action(-1,0,0);else source_stop(core_source_manager);
-        g_server.connected=false;
+        if(g_server.connected)server_native_action(-1,0,0);
+        server_probe();
+        if(g_server.connected){
+            c_copy(g_server.error,sizeof(g_server.error),
+                   l10n("Nie mozna rozlaczyc klienta. Sprawdz natywny Source."));
+            g_server.status=SERVER_ERROR;return false;
+        }
     }
     if(connect&&!g_server.connected){
-        if(buttons)server_native_action(1,edit?host:0,port);
-        else{
-            if(edit)server_native_action(0,host,port);
-            if(!install_source_lifecycle()){g_server.status=SERVER_ERROR;c_copy(g_server.error,sizeof(g_server.error),l10n("Brak aktywnego klienta sieciowego."));return false;}
-            source_start(core_source_manager);g_server.connected=transport_alive(transport_selected_slot());
+        server_native_action(1,edit?host:0,port);
+        server_probe();
+        if(!g_server.connected){
+            c_copy(g_server.error,sizeof(g_server.error),l10n("Nie polaczono. Sprawdz adres, port i serwer."));
+            g_server.status=SERVER_ERROR;return false;
         }
         g_server.dirty=false;server_sync_address();
     }
-    if(connect&&!g_server.connected){
-        if(!buttons&&g_source_lifecycle.started)source_stop(core_source_manager);
-        g_server.status=SERVER_ERROR;c_copy(g_server.error,sizeof(g_server.error),l10n("Nie polaczono. Sprawdz adres, port i serwer."));return false;
-    }
     g_server.error[0]=0;g_server.status=connect?SERVER_CONNECTED:SERVER_IDLE;
-    g_server.transferReady=false;g_server.lastBytes=transport_bytes(transport_selected_slot());g_server.lastUpload=transport_uploaded(transport_selected_slot());g_server.lastSample=ui_GetTime();return true;
+    g_server.transferReady=false;g_server.lastBytes=transport_bytes(transport_selected_slot());
+    g_server.lastUpload=transport_uploaded(transport_selected_slot());
+    g_server.lastSample=ui_GetTime();return true;
 }
 static void queue_server_connection(bool connect){
     g_server.pending=true;g_server.pendingConnect=connect;g_server.pendingFrame=ui_GetFrameCount()+2;
@@ -675,11 +697,10 @@ static void queue_server_connection(bool connect){
 static void process_server_connection(){
     server_prepare_source();
     if(g_server.pending&&ui_GetFrameCount()>=g_server.pendingFrame){
-        bool connect=g_server.pendingConnect,resume=g_server.resumeAfterConnect;
-        g_server.pending=false;g_server.resumeAfterConnect=false;
-        bool success=request_server_connection(connect);
-        if(success&&connect&&resume&&!window_isPlaying(core_main_window)&&!core_main_window[1])
-            window_setPlayState(core_main_window,true);
+        bool connect=g_server.pendingConnect;
+        g_server.pending=false;
+        // Connection requests are deliberately independent of Play/Stop.
+        request_server_connection(connect);
     }
 }
 static bool request_source_rate(int index){
