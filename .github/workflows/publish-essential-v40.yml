@@ -1,0 +1,51 @@
+name: Publish Essential++ V40 release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-essential-v40.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+      - name: Package and publish V40
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s essential_plus_plus.dll
+          test -s Source/essential_plus_plus.cpp
+          zip -q -r EssentialPlusPlus_V40_Windows_x64.zip essential_plus_plus.dll Source README.md README.pl.md README.de.md README.es.md
+          cat > release_notes.md <<'NOTES'
+          ## Essential++ V40 — Windows x64
+
+          An independent SDR++ plugin enhancing receiver operation, tuning and signal monitoring.
+
+          ### Highlights
+          - LCD-style toolbar with fine frequency controls, mode, filter, step, receiver gain and audio controls
+          - Receiver and device management, remote network connection controls and data-rate indicators
+          - Customizable spectrum and waterfall controls, markers, bookmarks and ten quick presets
+          - Keyboard/mouse shortcuts, two clocks and adjustable theme colors
+          - English, Polish, German and Spanish documentation and interface translations
+
+          **Compatibility:** The plugin targets SDR++ 1.3.2 Windows x64 nightly from 18 November 2026. Other versions are not guaranteed to work.
+
+          ### Install
+          Close SDR++ and copy `essential_plus_plus.dll` from the ZIP into its `modules` folder, replacing the prior build. Restart SDR++ and enable Essential++.
+
+          The ZIP includes the DLL, C++ source and documentation in four languages.
+
+          This is an independent community-developed module, not an official SDR++ extension.
+          NOTES
+          if gh release view v40 >/dev/null 2>&1; then
+            echo "Release v40 already exists; not overwriting it."
+            exit 0
+          fi
+          gh release create v40 essential_plus_plus.dll EssentialPlusPlus_V40_Windows_x64.zip --target "$GITHUB_SHA" --title "Essential++ V40 — Windows x64" --notes-file release_notes.md
