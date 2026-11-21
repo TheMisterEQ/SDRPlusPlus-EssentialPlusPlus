@@ -529,17 +529,28 @@ static void install_source_imports(){
         }
     }
 }
-// The SDR++ Server module imports ImGui::Button directly from sdrpp_core.dll.
-// Verify that exact imported symbol (not a guessed widget label or playback
-// function) and hook its IAT slot if the generic source scan missed it.
-// Never replace another plugin's unrelated hook.
+// SDR++ Server's GUI has a real Connect/Disconnect widget. Do not simulate
+// SourceManager start/stop: they control playback, not the network session.
+// Bind to the module owning the SELECTED source's menu callback. File-name-only
+// matching and assuming the IAT holds an unmodified ImGui::Button address both
+// rejected a perfectly valid native source on Windows.
 static bool ensure_native_server_button_bridge(){
-    u8*base=(u8*)GetModuleHandleA("sdrpp_server_source.dll");
+    NativeSourceHandler*handler=selected_source_handler();
+    void*selectedModule=0;
+    if(handler&&handler->menu)
+        GetModuleHandleExA(6,(const char*)handler->menu,&selectedModule);
+    if(!selectedModule)selectedModule=GetModuleHandleA("sdrpp_server_source.dll");
+    u8*base=(u8*)selectedModule;
     if(!base||*(unsigned short*)base!=0x5A4D)return false;
     const u32 pe=*(u32*)(base+0x3C);
     if(pe>=4096||*(u32*)(base+pe)!=0x4550||*(unsigned short*)(base+pe+24)!=0x20B)return false;
     const u32 size=*(u32*)(base+pe+24+56),dir=*(u32*)(base+pe+24+120);
     if(size<0x1000||size>0x40000000||!dir||dir+20>size)return false;
+    // This is the SDR++ Server's own import, never a button in another module.
+    auto info=(const ModuleManager::ModuleInfo_t*)GetProcAddress(selectedModule,"_INFO_");
+    if(!info||(usize)info<(usize)base||(usize)info-(usize)base>=size||
+       !c_equal(info->name,"sdrpp_server_source"))return false;
+    const char expected[]="?Button@ImGui@@YA_NPEBDAEBUImVec2@@@Z";
     for(u32 desc=dir;desc+20<=size;desc+=20){
         const u32 lookup=*(u32*)(base+desc),dll=*(u32*)(base+desc+12),iat=*(u32*)(base+desc+16);
         if(!dll)break;
@@ -551,13 +562,16 @@ static bool ensure_native_server_button_bridge(){
             if(!*slot||!nameRva)break;
             if((nameRva>>63)||nameRva+2>=size)continue;
             const char*name=(const char*)base+(usize)nameRva+2;
-            const usize space=size-(usize)nameRva-2;
-            const char expected[]="?Button@ImGui@@YA_NPEBDAEBUImVec2@@@Z";
-            usize j=0;while(j<space&&j<sizeof(expected)&&name[j]&&name[j]==expected[j])j++;
-            if(j!=sizeof(expected)-1||j>=space||name[j])continue;
+            usize j=0,available=size-(usize)nameRva-2;
+            while(j<available&&j<sizeof(expected)&&name[j]&&name[j]==expected[j])j++;
+            if(j!=sizeof(expected)-1||j>=available||name[j])continue;
             if(*slot==(void*)hook_server_button)return true;
-            if(*slot!=(void*)ui_Button||g_source_import_count>=512)return false;
-            SourceImport h={base,slot,*slot,(void*)hook_server_button};
+            // The imported symbol is verified by name and owning module.
+            // Another module may already have wrapped the function: preserve
+            // its pointer in our reversible IAT record instead of rejecting
+            // the source and falling back to the unrelated Play/Stop path.
+            if(g_source_import_count>=512)return false;
+            SourceImport h={selectedModule,slot,*slot,(void*)hook_server_button};
             if(!replace_import(slot,h.replacement))return false;
             g_source_imports[g_source_import_count++]=h;
             return true;
@@ -699,12 +713,9 @@ static bool request_server_connection(bool connect){
         g_server.status=SERVER_ERROR;return false;
     }
     server_probe();
-    if(!g_server.hasButton)visit_source_menu();
-    if(!g_server.hasButton){
-        c_copy(g_server.error,sizeof(g_server.error),
-               l10n("Nie mozna wykryc przycisku Connect/Disconnect w Source."));
-        g_server.status=SERVER_ERROR;return false;
-    }
+    // A verified native ImGui::Button hook above, not an incidental earlier
+    // hidden-menu observation, determines whether the source supports buttons.
+    // The actual action below reports whether the button callback was reached.
     // We deliberately do not stop a stream for a normal Connect action.
     // An actual Disconnect or endpoint reconnect needs playback stopped first.
     if((!connect||(edit&&g_server.connected))&&window_isPlaying(core_main_window))
